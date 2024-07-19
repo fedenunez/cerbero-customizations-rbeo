@@ -1,0 +1,15 @@
+# vi:si:et:sw=4:sts=4:ts=4:syntax=python
+# -*- Mode: Python -*-
+
+
+class Package(package.Package):
+
+    name = 'rbeolibs'
+    shortdesc = 'Libraries needed by rbeo'
+    longdesc = 'Libraries needed by rbeo'
+
+    deps = ['base-system-1.0','libnice']
+    version = '1.18_v3'
+
+    files = ['libnice:libs', 'libnice:plugins_net','glib:libs:lang:bins:schemas', 'openssl:libs','libffi:libs','gnustl:stl:devel','libcurl', 'libevent:libs','libiconv:libs','gnutls:libs','gmp:libs','nettle:libs','libtasn1:libs', 'zlib:libs','proxy-libintl:libs']
+    files_devel = ['libnice:plugins_net_devel','libevent','gmp','nettle', 'libtasn1','zlib','proxy-libintl']

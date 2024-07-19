@@ -1,0 +1,396 @@
+From 7fb978bf21e21a1de36777b45ea984bb1d5c52dd Mon Sep 17 00:00:00 2001
+From: Kurt Roeckx <kurt@roeckx.be>
+Date: Mon, 19 Sep 2016 22:05:15 +0200
+Subject: [PATCH] Make it build using OpenSSL 1.1.0
+
+---
+ bufferevent_openssl.c                | 62 ++++++++++++++--------------
+ openssl-compat.h                     | 33 +++++++++++++++
+ sample/https-client.c                |  4 ++
+ sample/openssl_hostname_validation.c | 10 +++--
+ test/regress_ssl.c                   | 56 ++++++++++++-------------
+ 5 files changed, 102 insertions(+), 63 deletions(-)
+ create mode 100644 openssl-compat.h
+
+diff --git a/bufferevent_openssl.c b/bufferevent_openssl.c
+index 017bfce62..b8a0fe0a6 100644
+--- a/bufferevent_openssl.c
++++ b/bufferevent_openssl.c
+@@ -66,6 +66,7 @@
+ #include <openssl/bio.h>
+ #include <openssl/ssl.h>
+ #include <openssl/err.h>
++#include "openssl-compat.h"
+ 
+ /*
+  * Define an OpenSSL bio that targets a bufferevent.
+@@ -109,10 +110,8 @@ print_err(int val)
+ static int
+ bio_bufferevent_new(BIO *b)
+ {
+-	b->init = 0;
+-	b->num = -1;
+-	b->ptr = NULL; /* We'll be putting the bufferevent in this field.*/
+-	b->flags = 0;
++	BIO_set_init(b, 0);
++	BIO_set_data(b, NULL); /* We'll be putting the bufferevent in this field.*/
+ 	return 1;
+ }
+ 
+@@ -122,12 +121,10 @@ bio_bufferevent_free(BIO *b)
+ {
+ 	if (!b)
+ 		return 0;
+-	if (b->shutdown) {
+-		if (b->init && b->ptr)
+-			bufferevent_free(b->ptr);
+-		b->init = 0;
+-		b->flags = 0;
+-		b->ptr = NULL;
++	if (BIO_get_shutdown(b)) {
++		if (BIO_get_init(b) && BIO_get_data(b))
++			bufferevent_free(BIO_get_data(b));
++		BIO_free(b);
+ 	}
+ 	return 1;
+ }
+@@ -143,10 +140,10 @@ bio_bufferevent_read(BIO *b, char *out, int outlen)
+ 
+ 	if (!out)
+ 		return 0;
+-	if (!b->ptr)
++	if (!BIO_get_data(b))
+ 		return -1;
+ 
+-	input = bufferevent_get_input(b->ptr);
++	input = bufferevent_get_input(BIO_get_data(b));
+ 	if (evbuffer_get_length(input) == 0) {
+ 		/* If there's no data to read, say so. */
+ 		BIO_set_retry_read(b);
+@@ -162,13 +159,13 @@ bio_bufferevent_read(BIO *b, char *out, int outlen)
+ static int
+ bio_bufferevent_write(BIO *b, const char *in, int inlen)
+ {
+-	struct bufferevent *bufev = b->ptr;
++	struct bufferevent *bufev = BIO_get_data(b);
+ 	struct evbuffer *output;
+ 	size_t outlen;
+ 
+ 	BIO_clear_retry_flags(b);
+ 
+-	if (!b->ptr)
++	if (!BIO_get_data(b))
+ 		return -1;
+ 
+ 	output = bufferevent_get_output(bufev);
+@@ -194,15 +191,15 @@ bio_bufferevent_write(BIO *b, const char *in, int inlen)
+ static long
+ bio_bufferevent_ctrl(BIO *b, int cmd, long num, void *ptr)
+ {
+-	struct bufferevent *bufev = b->ptr;
++	struct bufferevent *bufev = BIO_get_data(b);
+ 	long ret = 1;
+ 
+ 	switch (cmd) {
+ 	case BIO_CTRL_GET_CLOSE:
+-		ret = b->shutdown;
++		ret = BIO_get_shutdown(b);
+ 		break;
+ 	case BIO_CTRL_SET_CLOSE:
+-		b->shutdown = (int)num;
++		BIO_set_shutdown(b, (int)num);
+ 		break;
+ 	case BIO_CTRL_PENDING:
+ 		ret = evbuffer_get_length(bufferevent_get_input(bufev)) != 0;
+@@ -231,23 +228,24 @@ bio_bufferevent_puts(BIO *b, const char *s)
+ }
+ 
+ /* Method table for the bufferevent BIO */
+-static BIO_METHOD methods_bufferevent = {
+-	BIO_TYPE_LIBEVENT, "bufferevent",
+-	bio_bufferevent_write,
+-	bio_bufferevent_read,
+-	bio_bufferevent_puts,
+-	NULL /* bio_bufferevent_gets */,
+-	bio_bufferevent_ctrl,
+-	bio_bufferevent_new,
+-	bio_bufferevent_free,
+-	NULL /* callback_ctrl */,
+-};
++static BIO_METHOD *methods_bufferevent;
+ 
+ /* Return the method table for the bufferevents BIO */
+ static BIO_METHOD *
+ BIO_s_bufferevent(void)
+ {
+-	return &methods_bufferevent;
++	if (methods_bufferevent == NULL) {
++		methods_bufferevent = BIO_meth_new(BIO_TYPE_LIBEVENT, "bufferevent");
++		if (methods_bufferevent == NULL)
++			return NULL;
++		BIO_meth_set_write(methods_bufferevent, bio_bufferevent_write);
++		BIO_meth_set_read(methods_bufferevent, bio_bufferevent_read);
++		BIO_meth_set_puts(methods_bufferevent, bio_bufferevent_puts);
++		BIO_meth_set_ctrl(methods_bufferevent, bio_bufferevent_ctrl);
++		BIO_meth_set_create(methods_bufferevent, bio_bufferevent_new);
++		BIO_meth_set_destroy(methods_bufferevent, bio_bufferevent_free);
++	}
++	return methods_bufferevent;
+ }
+ 
+ /* Create a new BIO to wrap communication around a bufferevent.  If close_flag
+@@ -260,9 +258,9 @@ BIO_new_bufferevent(struct bufferevent *bufferevent, int close_flag)
+ 		return NULL;
+ 	if (!(result = BIO_new(BIO_s_bufferevent())))
+ 		return NULL;
+-	result->init = 1;
+-	result->ptr = bufferevent;
+-	result->shutdown = close_flag ? 1 : 0;
++	BIO_set_init(result, 1);
++	BIO_set_data(result, bufferevent);
++	BIO_set_shutdown(result, close_flag ? 1 : 0);
+ 	return result;
+ }
+ 
+diff --git a/openssl-compat.h b/openssl-compat.h
+new file mode 100644
+index 000000000..e47bac6e8
+--- /dev/null
++++ b/openssl-compat.h
+@@ -0,0 +1,33 @@
++#ifndef OPENSSL_COMPAT_H
++#define OPENSSL_COMPAT_H
++
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
++
++static BIO_METHOD *BIO_meth_new(int type, const char *name)
++{
++       BIO_METHOD *biom = calloc(1, sizeof(BIO_METHOD));
++
++       if (biom != NULL) {
++               biom->type = type;
++               biom->name = name;
++       }
++       return biom;
++}
++
++#define BIO_meth_set_write(b, f) b->bwrite = f
++#define BIO_meth_set_read(b, f) b->bread = f
++#define BIO_meth_set_puts(b, f) b->bputs = f
++#define BIO_meth_set_ctrl(b, f) b->ctrl = f
++#define BIO_meth_set_create(b, f) b->create = f
++#define BIO_meth_set_destroy(b, f) b->destroy = f
++
++#define BIO_set_init(b, val) b->init = val
++#define BIO_set_data(b, val) b->ptr = val
++#define BIO_set_shutdown(b, val) b->shutdown = val
++#define BIO_get_init(b) b->init
++#define BIO_get_data(b) b->ptr
++#define BIO_get_shutdown(b) b->shutdown
++
++#endif /* OPENSSL_VERSION_NUMBER < 0x10100000L */
++
++#endif /* OPENSSL_COMPAT_H */
+diff --git a/sample/https-client.c b/sample/https-client.c
+index 029cd19c7..dfe6bd6cb 100644
+--- a/sample/https-client.c
++++ b/sample/https-client.c
+@@ -310,11 +310,13 @@ main(int argc, char **argv)
+ 	}
+ 	uri[sizeof(uri) - 1] = '\0';
+ 
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
+ 	// Initialize OpenSSL
+ 	SSL_library_init();
+ 	ERR_load_crypto_strings();
+ 	SSL_load_error_strings();
+ 	OpenSSL_add_all_algorithms();
++#endif
+ 
+ 	/* This isn't strictly necessary... OpenSSL performs RAND_poll
+ 	 * automatically on first use of random number generator. */
+@@ -474,6 +476,7 @@ main(int argc, char **argv)
+ 		SSL_CTX_free(ssl_ctx);
+ 	if (type == HTTP && ssl)
+ 		SSL_free(ssl);
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
+ 	EVP_cleanup();
+ 	ERR_free_strings();
+ 
+@@ -483,6 +486,7 @@ main(int argc, char **argv)
+ 	ERR_remove_state(0);
+ #endif
+ 	CRYPTO_cleanup_all_ex_data();
++#endif /*OPENSSL_VERSION_NUMBER < 0x10100000L */
+ 
+ 	sk_SSL_COMP_free(SSL_COMP_get_compression_methods());
+ 
+diff --git a/sample/openssl_hostname_validation.c b/sample/openssl_hostname_validation.c
+index 00e63d1e1..40312f2e9 100644
+--- a/sample/openssl_hostname_validation.c
++++ b/sample/openssl_hostname_validation.c
+@@ -48,6 +48,10 @@ SOFTWARE.
+ 
+ #define HOSTNAME_MAX_SIZE 255
+ 
++#if OPENSSL_VERSION_NUMBER < 0x10100000L
++#define ASN1_STRING_get0_data ASN1_STRING_data
++#endif
++
+ /**
+ * Tries to find a match for hostname in the certificate's Common Name field.
+ *
+@@ -60,7 +64,7 @@ static HostnameValidationResult matches_common_name(const char *hostname, const
+         int common_name_loc = -1;
+         X509_NAME_ENTRY *common_name_entry = NULL;
+         ASN1_STRING *common_name_asn1 = NULL;
+-        char *common_name_str = NULL;
++        const char *common_name_str = NULL;
+ 
+         // Find the position of the CN field in the Subject field of the certificate
+         common_name_loc = X509_NAME_get_index_by_NID(X509_get_subject_name((X509 *) server_cert), NID_commonName, -1);
+@@ -79,7 +83,7 @@ static HostnameValidationResult matches_common_name(const char *hostname, const
+         if (common_name_asn1 == NULL) {
+                 return Error;
+         }
+-        common_name_str = (char *) ASN1_STRING_data(common_name_asn1);
++        common_name_str = (char *) ASN1_STRING_get0_data(common_name_asn1);
+ 
+         // Make sure there isn't an embedded NUL character in the CN
+         if ((size_t)ASN1_STRING_length(common_name_asn1) != strlen(common_name_str)) {
+@@ -123,7 +127,7 @@ static HostnameValidationResult matches_subject_alternative_name(const char *hos
+ 
+                 if (current_name->type == GEN_DNS) {
+                         // Current name is a DNS name, let's check it
+-                        char *dns_name = (char *) ASN1_STRING_data(current_name->d.dNSName);
++                        const char *dns_name = (char *) ASN1_STRING_get0_data(current_name->d.dNSName);
+ 
+                         // Make sure there isn't an embedded NUL character in the DNS name
+                         if ((size_t)ASN1_STRING_length(current_name->d.dNSName) != strlen(dns_name)) {
+diff --git a/test/regress_ssl.c b/test/regress_ssl.c
+index a476980bf..2fac84b51 100644
+--- a/test/regress_ssl.c
++++ b/test/regress_ssl.c
+@@ -55,6 +55,7 @@
+ #include <openssl/bio.h>
+ #include <openssl/err.h>
+ #include <openssl/pem.h>
++#include "openssl-compat.h"
+ 
+ #include <string.h>
+ #ifdef _WIN32
+@@ -534,10 +535,8 @@ struct rwcount
+ static int
+ bio_rwcount_new(BIO *b)
+ {
+-	b->init = 0;
+-	b->num = -1;
+-	b->ptr = NULL;
+-	b->flags = 0;
++	BIO_set_init(b, 0);
++	BIO_set_data(b, NULL);
+ 	return 1;
+ }
+ static int
+@@ -545,17 +544,16 @@ bio_rwcount_free(BIO *b)
+ {
+ 	if (!b)
+ 		return 0;
+-	if (b->shutdown) {
+-		b->init = 0;
+-		b->flags = 0;
+-		b->ptr = NULL;
++	if (BIO_get_shutdown(b)) {
++		BIO_set_init(b, 0);
++		BIO_set_data(b, NULL);
+ 	}
+ 	return 1;
+ }
+ static int
+ bio_rwcount_read(BIO *b, char *out, int outlen)
+ {
+-	struct rwcount *rw = b->ptr;
++	struct rwcount *rw = BIO_get_data(b);
+ 	ev_ssize_t ret = recv(rw->fd, out, outlen, 0);
+ 	++rw->read;
+ 	if (ret == -1 && EVUTIL_ERR_RW_RETRIABLE(EVUTIL_SOCKET_ERROR())) {
+@@ -567,7 +565,7 @@ static int
+ bio_rwcount_write(BIO *b, const char *in, int inlen)
+ {
+ 
+-	struct rwcount *rw = b->ptr;
++	struct rwcount *rw = BIO_get_data(b);
+ 	ev_ssize_t ret = send(rw->fd, in, inlen, 0);
+ 	++rw->write;
+ 	if (ret == -1 && EVUTIL_ERR_RW_RETRIABLE(EVUTIL_SOCKET_ERROR())) {
+@@ -581,10 +579,10 @@ bio_rwcount_ctrl(BIO *b, int cmd, long num, void *ptr)
+ 	long ret = 0;
+ 	switch (cmd) {
+ 	case BIO_CTRL_GET_CLOSE:
+-		ret = b->shutdown;
++		ret = BIO_get_shutdown(b);
+ 		break;
+ 	case BIO_CTRL_SET_CLOSE:
+-		b->shutdown = (int)num;
++		BIO_set_shutdown(b, (int)num);
+ 		break;
+ 	case BIO_CTRL_PENDING:
+ 		ret = 0;
+@@ -605,21 +603,23 @@ bio_rwcount_puts(BIO *b, const char *s)
+ 	return bio_rwcount_write(b, s, strlen(s));
+ }
+ #define BIO_TYPE_LIBEVENT_RWCOUNT 0xff1
+-static BIO_METHOD methods_rwcount = {
+-	BIO_TYPE_LIBEVENT_RWCOUNT, "rwcount",
+-	bio_rwcount_write,
+-	bio_rwcount_read,
+-	bio_rwcount_puts,
+-	NULL /* bio_rwcount_gets */,
+-	bio_rwcount_ctrl,
+-	bio_rwcount_new,
+-	bio_rwcount_free,
+-	NULL /* callback_ctrl */,
+-};
++static BIO_METHOD *methods_rwcount;
++
+ static BIO_METHOD *
+ BIO_s_rwcount(void)
+ {
+-	return &methods_rwcount;
++	if (methods_rwcount == NULL) {
++		methods_rwcount = BIO_meth_new(BIO_TYPE_LIBEVENT_RWCOUNT, "rwcount");
++		if (methods_rwcount == NULL)
++			return NULL;
++		BIO_meth_set_write(methods_rwcount, bio_rwcount_write);
++		BIO_meth_set_read(methods_rwcount, bio_rwcount_read);
++		BIO_meth_set_puts(methods_rwcount, bio_rwcount_puts);
++		BIO_meth_set_ctrl(methods_rwcount, bio_rwcount_ctrl);
++		BIO_meth_set_create(methods_rwcount, bio_rwcount_new);
++		BIO_meth_set_destroy(methods_rwcount, bio_rwcount_free);
++	}
++	return methods_rwcount;
+ }
+ static BIO *
+ BIO_new_rwcount(int close_flag)
+@@ -627,9 +627,9 @@ BIO_new_rwcount(int close_flag)
+ 	BIO *result;
+ 	if (!(result = BIO_new(BIO_s_rwcount())))
+ 		return NULL;
+-	result->init = 1;
+-	result->ptr = NULL;
+-	result->shutdown = !!close_flag;
++	BIO_set_init(result, 1);
++	BIO_set_data(result,  NULL);
++	BIO_set_shutdown(result, !!close_flag);
+ 	return result;
+ }
+ 
+@@ -693,7 +693,7 @@ regress_bufferevent_openssl_connect(void *arg)
+ 		rw.fd = bufferevent_getfd(bev);
+ 		bio = BIO_new_rwcount(0);
+ 		tt_assert(bio);
+-		bio->ptr = &rw;
++		BIO_set_data(bio, &rw);
+ 		SSL_set_bio(ssl, bio, bio);
+ 	}
+ 	evbuffer_add_printf(bufferevent_get_output(bev), "1\n");

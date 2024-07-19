@@ -1,0 +1,49 @@
+# -*- Mode: Python -*- vi:si:et:sw=4:sts=4:ts=4:syntax=python
+import shutil
+from pathlib import Path
+
+from cerbero.tools.libtool import LibtoolLibrary
+
+class Recipe(recipe.Recipe):
+    name = 'libevent'
+    version = '2.1.12-stable'
+    remotes = {'origin': 'https://github.com/libevent/libevent.git'}
+    commit = 'release-{0}'.format(version)
+
+    licenses = [{License.BSD_like: ['LICENSE']}]
+
+    btype = BuildType.CMAKE
+    configure_options = ' -DBUILD_SHARED_LIBS=1 -DBUILD_STATIC_LIBS=1 -DEVENT__LIBRARY_TYPE=STATIC -DEVENT__DISABLE_OPENSSL=ON '
+
+    deps = ['zlib']
+    platform_deps = {Platform.ANDROID: ['gnustl']}
+
+    patches = [
+   # 'libevent/2.1.8-stable/0001-Replace-checking-of-WNOWAIT-in-waitpid-with-waitid.patch', 
+ #   'libevent/2.1.8-stable/0001-Removes-arc4random_addrandom-dependency.patch' 
+ ]
+    #files_libs = ['libevent_core.a', 'libevent_extra.a']
+    files_devel = ['include/event2','include','lib/libevent.a','lib/libevent_core.a', 'lib/libevent_extra.a'] 
+    def prepare(self):
+        if self.config.target_platform == Platform.WINDOWS:
+            self.configure_options += ' -DWIN32=1'
+        if self.config.target_platform == Platform.ANDROID:
+            # configure for android
+            self.configure_options += ' -DANDROID_NDK=1 '
+            self.append_env('CXXFLAGS', '-frtti')
+
+        self.configure_options += ' -DZLIB_ROOT=%s ' % self.config.prefix
+
+
+    async def install(self):
+        await super(recipe.Recipe, self).install()
+        bindir = Path(self.config.prefix) / 'lib'
+        if not bindir.is_dir():
+            bindir.mkdir(parents=True, exist_ok=True)
+            #/home/fede/repos/cerbero-rbeolibs/build/sources/android_universal/armv7/libevent-2.1.8-stable/_builddir/lib/libevent.a
+        shutil.move( os.path.join(self.build_dir, '_builddir', 'lib', 'libevent.a'), os.path.join(self.config.prefix, 'lib', 'libevent.a'))
+        shutil.move( os.path.join(self.build_dir, '_builddir', 'lib', 'libevent_core.a'), os.path.join(self.config.prefix, 'lib', 'libevent_core.a'))
+        shutil.move( os.path.join(self.build_dir, '_builddir', 'lib', 'libevent_extra.a'), os.path.join(self.config.prefix, 'lib', 'libevent_extra.a'))
+    
+    def built_version(self):
+        return self.version

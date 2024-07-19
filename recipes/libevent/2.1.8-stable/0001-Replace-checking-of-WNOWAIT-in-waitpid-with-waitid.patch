@@ -1,0 +1,141 @@
+From 7f136ad2ec19f0ab85962c333f1f163f1dc85347 Mon Sep 17 00:00:00 2001
+From: Nicolas <nicolas@ikatu.com>
+Date: Mon, 3 Sep 2018 12:12:08 -0300
+Subject: [PATCH] Replace checking of WNOWAIT in waitpid() with waitid()
+
+Because this adds dependency of running stuff from cmake for detecting what
+platform support and we don't, but this doesn't work in cross-compiling.
+---
+ CMakeLists.txt                         |  2 --
+ cmake/CheckWaitpidSupportWNOWAIT.cmake | 18 ------------------
+ configure.ac                           | 20 --------------------
+ event-config.h.cmake                   |  2 --
+ test/regress.c                         | 19 +++++++------------
+ 5 files changed, 7 insertions(+), 54 deletions(-)
+ delete mode 100644 cmake/CheckWaitpidSupportWNOWAIT.cmake
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b4a34f3d..1bcd7586 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -492,8 +492,6 @@ CHECK_TYPE_SIZE("void *" EVENT__SIZEOF_VOID_P)
+ #CHECK_FILE_OFFSET_BITS()
+ #set(EVENT___FILE_OFFSET_BITS _FILE_OFFSET_BITS)
+ 
+-include(CheckWaitpidSupportWNOWAIT)
+-
+ # Verify kqueue works with pipes.
+ if (EVENT__HAVE_KQUEUE)
+     if (CMAKE_CROSSCOMPILING AND NOT EVENT__FORCE_KQUEUE_CHECK)
+diff --git a/cmake/CheckWaitpidSupportWNOWAIT.cmake b/cmake/CheckWaitpidSupportWNOWAIT.cmake
+deleted file mode 100644
+index 1a73db37..00000000
+--- a/cmake/CheckWaitpidSupportWNOWAIT.cmake
++++ /dev/null
+@@ -1,18 +0,0 @@
+-include(CheckCSourceRuns)
+-
+-check_c_source_runs(
+-"
+-#include <unistd.h>
+-#include <sys/types.h>
+-#include <sys/wait.h>
+-#include <stdlib.h>
+-
+-int
+-main(int argc, char** argv)
+-{
+-    pid_t pid;
+-    int status;
+-    if ((pid = fork()) == 0) _exit(0);
+-    _exit(waitpid(pid, &status, WNOWAIT) == -1);
+-}"
+-EVENT__HAVE_WAITPID_WITH_WNOWAIT)
+diff --git a/configure.ac b/configure.ac
+index 7528d37e..af57f56a 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -599,26 +599,6 @@ main(int argc, char **argv)
+ fi
+ AM_CONDITIONAL(EPOLL_BACKEND, [test "x$haveepoll" = "xyes"])
+ 
+-AC_MSG_CHECKING(waitpid support WNOWAIT)
+-AC_TRY_RUN(
+-#include <unistd.h>
+-#include <sys/types.h>
+-#include <sys/wait.h>
+-#include <stdlib.h>
+-
+-int
+-main(int argc, char** argv)
+-{
+-    pid_t pid;
+-    int status;
+-    if ((pid = fork()) == 0) _exit(0);
+-    _exit(waitpid(pid, &status, WNOWAIT) == -1);
+-}, [AC_MSG_RESULT(yes)
+-AC_DEFINE(HAVE_WAITPID_WITH_WNOWAIT, 1,
+-[Define if waitpid() supports WNOWAIT])
+-], AC_MSG_RESULT(no), AC_MSG_RESULT(no))
+-
+-
+ haveeventports=no
+ AC_CHECK_FUNCS(port_create, [haveeventports=yes], )
+ if test "x$haveeventports" = "xyes" ; then
+diff --git a/event-config.h.cmake b/event-config.h.cmake
+index c1355be9..6a9fd2f6 100644
+--- a/event-config.h.cmake
++++ b/event-config.h.cmake
+@@ -526,7 +526,5 @@
+ /* Define to 1 if you have ERR_remove_thread_stat(). */
+ #cmakedefine EVENT__HAVE_ERR_REMOVE_THREAD_STATE
+ 
+-/* Define if waitpid() supports WNOWAIT */
+-#cmakedefine EVENT__HAVE_WAITPID_WITH_WNOWAIT
+ 
+ #endif
+diff --git a/test/regress.c b/test/regress.c
+index d8a6b9b8..0da23b86 100644
+--- a/test/regress.c
++++ b/test/regress.c
+@@ -852,14 +852,9 @@ static void
+ test_fork(void)
+ {
+ 	char c;
+-	int status;
++	siginfo_t infop;
+ 	struct event ev, sig_ev, usr_ev, existing_ev;
+ 	pid_t pid;
+-	int wait_flags = 0;
+-
+-#ifdef EVENT__HAVE_WAITPID_WITH_WNOWAIT
+-	wait_flags |= WNOWAIT;
+-#endif
+ 
+ 	setup_test("After fork: ");
+ 
+@@ -933,15 +928,15 @@ test_fork(void)
+ 		tt_fail_perror("write");
+ 	}
+ 
+-	TT_BLATHER(("Before waitpid"));
+-	if (waitpid(pid, &status, wait_flags) == -1) {
+-		perror("waitpid");
++	TT_BLATHER(("Before waitid"));
++	if (waitid(P_PID, pid, &infop, WEXITED | WNOWAIT) == -1) {
++		fprintf(stdout, "FAILED (waitid)\n");
+ 		exit(1);
+ 	}
+-	TT_BLATHER(("After waitpid"));
++	TT_BLATHER(("After waitid"));
+ 
+-	if (WEXITSTATUS(status) != 76) {
+-		fprintf(stdout, "FAILED (exit): %d\n", WEXITSTATUS(status));
++	if (infop.si_status != 76) {
++		fprintf(stdout, "FAILED (exit): %d\n", infop.si_status);
+ 		exit(1);
+ 	}
+ 
+-- 
+2.15.2 (Apple Git-101.1)
+
