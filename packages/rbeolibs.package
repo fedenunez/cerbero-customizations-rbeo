@@ -2,14 +2,33 @@
 # -*- Mode: Python -*-
 
 
-class Package(package.Package):
+class SDKPackage(custom.GStreamer, package.SDKPackage):
 
     name = 'rbeolibs'
-    shortdesc = 'Libraries needed by rbeo'
-    longdesc = 'Libraries needed by rbeo'
+    shortdesc = 'rbeo lib'
+    longdesc = 'Libraries needed by rbeo app'
 
-    deps = ['base-system-1.0','libnice']
-    version = '1.18_v3'
+    sdk_version = '1.0'
+    uuid = 'cafeb712-0d09-4a34-8117-8a69b6deecc2'
+    packages =[
+               # (name, required, selected)
+               ('rbeolibs-base', True, True),
+              ]
+    install_dir = {
+        Platform.LINUX: '/opt/gstreamer-1.0/',
+        Platform.DARWIN: '/Library/Frameworks/Rbeolibs.framework/',
+        Platform.IOS: '/Library/Developer/Rbeolibs/iPhone.sdk'}
 
-    files = ['libnice:libs', 'libnice:plugins_net','glib:libs:lang:bins:schemas', 'openssl:libs','libffi:libs','gnustl:stl:devel','libcurl', 'libevent:libs','libiconv:libs','gnutls:libs','gmp:libs','nettle:libs','libtasn1:libs', 'zlib:libs','proxy-libintl:libs']
-    files_devel = ['libnice:plugins_net_devel','libevent','gmp','nettle', 'libtasn1','zlib','proxy-libintl']
+    root_env_var = 'RBEOLIB_1_0_ROOT_%(arch)s'
+    wix_upgrade_code = {
+        PackageType.DEVEL: {
+            Architecture.X86 : 'cafe126d-1f4a-4577-9598-e900f594fd06',
+            Architecture.X86_64: 'cafea3aa-249f-453c-b82e-ecd05fac0693',
+            },
+        PackageType.RUNTIME: {
+            Architecture.X86 : 'cafec791-d84e-4f7e-a4eb-18012a0e319d',
+            Architecture.X86_64: 'cafe66dc-b249-4e6d-a68a-d0f836b2b3cf',
+            },
+        }
+    osx_framework_library = ('Rbeolibs', 'lib/Rbeolibs')
+    ios_framework_library = ('Rbeolibs', 'lib/Rbeolibs')

@@ -1,0 +1,9 @@
+# Ignore Emacs temporary files
+*~ 
+.#* 
+# Ignore Vim temporary files
+*.swp 
+*.swo 
+# Ignore all content of any folder starting with ./cerbero-
+cerbero-*/
+
