@@ -17,7 +17,8 @@ class Recipe(recipe.Recipe):
     licenses = [License.LGPLv3Plus, License.GPLv2Plus, License.GPLv3Plus]
     configure_options = '--enable-shared --enable-public-key'
     deps = ['gmp']
-    patches = [name + '/0001-ios-fix-build-using-.word-for-assembly-constants.patch']
+    patches = [name + '/0001-ios-fix-build-using-.word-for-assembly-constants.patch',
+      name + '/0001-Fixes-ios-configure-buildsystem-fail.patch']
     allow_parallel_build = False
 
     files_bins = ['nettle-hash', 'nettle-lfib-stream', 'nettle-pbkdf2']

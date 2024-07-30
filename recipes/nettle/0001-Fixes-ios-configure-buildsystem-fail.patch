@@ -1,0 +1,61 @@
+From 5a7785d7046e52389f6e05d279497290780d43a3 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Fede=20Nu=C3=B1ez?= <fna@ikatu.com>
+Date: Tue, 30 Jul 2024 14:44:44 -0300
+Subject: [PATCH] Fixes ios configure buildsystem fail
+
+---
+ configure | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/configure b/configure
+index 2a64cd8..a80d235 100755
+--- a/configure
++++ b/configure
+@@ -4627,7 +4627,7 @@ cat >conftest.c <<EOF
+ int
+ main ()
+ {
+-  exit(0);
++  return 0;
+ }
+ EOF
+ gmp_compile="$CC_FOR_BUILD conftest.c"
+@@ -4659,7 +4659,7 @@ cat >conftest.c <<EOF
+ int
+ main ()
+ {
+-  exit(0);
++  return 0;
+ }
+ EOF
+ gmp_compile="$HOST_CC conftest.c"
+@@ -4695,7 +4695,7 @@ cat >conftest.c <<EOF
+ int
+ main ()
+ {
+-  exit(0);
++  return 0;
+ }
+ EOF
+ gmp_compile="$i conftest.c"
+@@ -4745,7 +4745,7 @@ else
+ int
+ main ()
+ {
+-  exit (0);
++  return 0;
+ }
+ EOF
+   for i in .exe ,ff8 ""; do
+@@ -7117,7 +7117,7 @@ else
+ int
+ main ()
+ {
+-exit(0);
++return 0;
+   ;
+   return 0;
+ }
+-- 
+2.39.3 (Apple Git-146)
+
