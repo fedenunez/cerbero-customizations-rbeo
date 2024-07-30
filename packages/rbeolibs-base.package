@@ -1,6 +1,7 @@
 # vi:si:et:sw=4:sts=4:ts=4:syntax=python
 # -*- Mode: Python -*-
 
+import os
 
 class Package(package.Package):
 
@@ -9,7 +10,6 @@ class Package(package.Package):
     longdesc = 'Libraries needed by rbeo'
 
     deps = []
-    version = '1.24'
 
     files = ['libnice:libs:plugins_net','glib:libs:lang:bins:schemas', 'openssl:libs','libffi:libs','libcurl', 'libevent:libs','libiconv:libs','gmp:libs','nettle:libs','libtasn1:libs', 'zlib:libs','proxy-libintl:libs','pcre2:libs']
     

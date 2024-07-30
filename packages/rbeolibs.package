@@ -1,6 +1,7 @@
 # vi:si:et:sw=4:sts=4:ts=4:syntax=python
 # -*- Mode: Python -*-
 
+import os
 
 class SDKPackage(package.SDKPackage):
 
@@ -8,14 +9,19 @@ class SDKPackage(package.SDKPackage):
     shortdesc = 'rbeo lib'
     longdesc = 'Libraries needed by rbeo app'
 
-    sdk_version = '1.0'
+
+    build_version = os.getenv('BUILD_VERSION')
+
+    if build_version:
+        version = build_version
+
     uuid = 'cafeb712-0d09-4a34-8117-8a69b6deecc2'
     packages =[
                # (name, required, selected)
                ('rbeolibs-base', True, True),
               ]
     install_dir = {
-        Platform.LINUX: '/opt/gstreamer-1.0/',
+        Platform.LINUX: '/opt/rbeo/',
         Platform.DARWIN: '/Library/Frameworks/Rbeolibs.framework/',
         Platform.IOS: '/Library/Developer/Rbeolibs/iPhone.sdk'}
 
