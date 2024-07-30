@@ -17,4 +17,5 @@ class Package(package.Package):
 
     def prepare(self):
         if self.config.target_platform == Platform.ANDROID:
-           files += ['gnustl:stl:devel','gnutls:libs'] 
+           #self.files += ['gnustl:stl:devel','gnutls:libs'] 
+           pass

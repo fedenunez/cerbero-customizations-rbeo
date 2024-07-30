@@ -41,9 +41,9 @@ class Recipe(recipe.Recipe):
         if not bindir.is_dir():
             bindir.mkdir(parents=True, exist_ok=True)
             #/home/fede/repos/cerbero-rbeolibs/build/sources/android_universal/armv7/libevent-2.1.8-stable/_builddir/lib/libevent.a
-        shutil.move( os.path.join(self.build_dir, '_builddir', 'lib', 'libevent.a'), os.path.join(self.config.prefix, 'lib', 'libevent.a'))
-        shutil.move( os.path.join(self.build_dir, '_builddir', 'lib', 'libevent_core.a'), os.path.join(self.config.prefix, 'lib', 'libevent_core.a'))
-        shutil.move( os.path.join(self.build_dir, '_builddir', 'lib', 'libevent_extra.a'), os.path.join(self.config.prefix, 'lib', 'libevent_extra.a'))
+        shutil.move( os.path.join(self.build_dir, 'lib', 'libevent.a'), os.path.join(self.config.prefix, 'lib', 'libevent.a'))
+        shutil.move( os.path.join(self.build_dir, 'lib', 'libevent_core.a'), os.path.join(self.config.prefix, 'lib', 'libevent_core.a'))
+        shutil.move( os.path.join(self.build_dir, 'lib', 'libevent_extra.a'), os.path.join(self.config.prefix, 'lib', 'libevent_extra.a'))
     
     def built_version(self):
         return self.version

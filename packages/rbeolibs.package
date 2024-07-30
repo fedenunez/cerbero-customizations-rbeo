@@ -2,7 +2,7 @@
 # -*- Mode: Python -*-
 
 
-class SDKPackage(custom.GStreamer, package.SDKPackage):
+class SDKPackage(package.SDKPackage):
 
     name = 'rbeolibs'
     shortdesc = 'rbeo lib'
