@@ -20,9 +20,17 @@ class Package(package.Package):
         Platform.DARWIN: ['rbeolibs-osx-framework'],
     }
 
-    files = ['libnice:libs:plugins_net','glib:libs:lang:bins:schemas', 'openssl:libs','libffi:libs','curl', 'libevent:libs','libiconv:libs', 'zlib:libs','pcre2:libs']
+    files = ['libnice:libs:plugins_net','glib:libs:lang:bins:schemas', 'openssl:libs','libffi:libs','curl', 'libevent:libs','libiconv:libs', 'zlib:libs','pcre2:libs',
+             # GStreamer + WebRTC (webrtcbin) stack. All LGPL/BSD; no ugly/gpl/
+             # codecs_restricted categories are selected.
+             'gstreamer-1.0:libs:plugins_core',
+             'gst-plugins-base-1.0:libs:plugins_core:plugins_playback:plugins_codecs:plugins_net',
+             'gst-plugins-good-1.0:plugins_net:plugins_codecs',                  # rtpmanager, rtp, udp, vpx
+             'gst-plugins-bad-1.0:libs:plugins_net:plugins_effects:plugins_codecs',  # webrtcbin, dtls, sctp, srtp, webrtcdsp, openh264
+             'opus:libs', 'libvpx:libs', 'openh264:libs', 'libsrtp:libs']
 
-    files_devel = ['libnice:plugins_net_devel','libevent','zlib']
+    files_devel = ['libnice:plugins_net_devel','libevent','zlib',
+                   'gstreamer-1.0', 'gst-plugins-base-1.0', 'gst-plugins-bad-1.0']
 
     def prepare(self):
         # proxy-libintl is glib's gettext shim for platforms whose libc lacks
