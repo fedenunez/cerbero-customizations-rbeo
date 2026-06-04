@@ -53,6 +53,11 @@ jobs:
         with:
           python-version: '3.12'
 
+      # Cerbero requires the `distro` module under the *active* interpreter
+      # (the setup-python one), not the system python a distro package targets.
+      - name: Install Cerbero Python dependencies
+        run: python -m pip install --upgrade pip distro
+
       # Cerbero drives source checkouts via git and commits applied patches,
       # so a git identity must exist on the runner.
       - name: Configure git identity
