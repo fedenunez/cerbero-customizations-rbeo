@@ -1,0 +1,112 @@
+# -*- Mode: Python -*- vi:si:et:sw=4:sts=4:ts=4:syntax=python
+#
+# LOCAL OVERRIDE of upstream gst-plugins-bad-1.0.
+#
+# rbeolibs only needs the WebRTC plugins out of gst-plugins-bad. Building the full
+# plugin set drags in fragile/unneeded plugins (e.g. SoundTouch fails to link on
+# Android) and the software openh264 H.264 codec (patent exposure). So we build a
+# MINIMAL gst-plugins-bad: `auto_features=disabled` turns everything off, then we
+# re-enable only what webrtcbin needs, plus the OS hardware H.264 codecs
+# (applemedia / androidmedia) which carry no MPEG-LA royalty.
+#
+# Re-sync the tarball_checksum (and review meson option names / file lists) when
+# bumping the Cerbero version.
+
+class Recipe(custom.GStreamer):
+    name = 'gst-plugins-bad-1.0'
+    btype = BuildType.MESON
+    if custom.GStreamer.stype == SourceType.TARBALL:
+        licenses = [{License.LGPLv2Plus: None, License.BSD_3_Clause: ['ext/sctp/usrsctp/LICENSE.md']}]
+    else:
+        licenses = [{License.LGPLv2Plus: None, License.BSD_3_Clause: ['subprojects/gst-plugins-bad/ext/sctp/usrsctp/LICENSE.md']}]
+    tarball_checksum = '4213f43ddb875bb141e5040e97735579d74665bec3d17b51052aade395b83f00'
+
+    # Disable every plugin by default, then explicitly enable the WebRTC set.
+    meson_options = {
+        'auto_features': 'disabled',
+        'dtls': 'enabled',
+        'sctp': 'enabled',
+        'sctp-internal-usrsctp': 'enabled',
+        'srtp': 'enabled',
+        'webrtc': 'enabled',
+        'webrtcdsp': 'enabled',
+    }
+
+    # Only the deps the enabled plugins need.
+    deps = ['gstreamer-1.0', 'gst-plugins-base-1.0',
+            'libnice', 'openssl', 'libsrtp', 'webrtc-audio-processing']
+
+    files_libs = [
+        'libgstsctp-1.0',
+        'libgstwebrtc-1.0',
+        'libgstwebrtcnice-1.0',
+    ]
+
+    files_plugins_devel = [
+        'include/gstreamer-1.0/gst/sctp',
+        'include/gstreamer-1.0/gst/webrtc',
+        '%(libdir)s/pkgconfig/gstreamer-sctp-1.0.pc',
+        '%(libdir)s/pkgconfig/gstreamer-webrtc-1.0.pc',
+        '%(libdir)s/pkgconfig/gstreamer-webrtc-nice-1.0.pc',
+    ]
+
+    files_plugins_net = [
+        '%(libdir)s/gstreamer-1.0/libgstdtls%(mext)s',
+        '%(libdir)s/gstreamer-1.0/libgstsctp%(mext)s',
+        '%(libdir)s/gstreamer-1.0/libgstsrtp%(mext)s',
+        '%(libdir)s/gstreamer-1.0/libgstwebrtc%(mext)s',
+    ]
+    files_plugins_net_devel = [
+        '%(libdir)s/gstreamer-1.0/libgstdtls.a', '%(libdir)s/gstreamer-1.0/libgstdtls.la',
+        '%(libdir)s/gstreamer-1.0/libgstsctp.a', '%(libdir)s/gstreamer-1.0/libgstsctp.la',
+        '%(libdir)s/gstreamer-1.0/libgstsrtp.a', '%(libdir)s/gstreamer-1.0/libgstsrtp.la',
+        '%(libdir)s/gstreamer-1.0/libgstwebrtc.a', '%(libdir)s/gstreamer-1.0/libgstwebrtc.la',
+    ]
+
+    files_plugins_effects = [
+        '%(libdir)s/gstreamer-1.0/libgstwebrtcdsp%(mext)s',
+    ]
+    files_plugins_effects_devel = [
+        '%(libdir)s/gstreamer-1.0/libgstwebrtcdsp.a', '%(libdir)s/gstreamer-1.0/libgstwebrtcdsp.la',
+    ]
+
+    # Hardware H.264 (no software openh264): VideoToolbox on Apple, MediaCodec on
+    # Android. Base categories are empty; the platform extensions add the plugin.
+    files_plugins_codecs = []
+    files_plugins_codecs_devel = []
+    platform_files_plugins_codecs = {
+        Platform.ANDROID: [
+            '%(libdir)s/gstreamer-1.0/libgstandroidmedia%(mext)s',
+        ],
+    }
+    platform_files_plugins_codecs_devel = {
+        Platform.ANDROID: [
+            '%(libdir)s/gstreamer-1.0/libgstandroidmedia.a', '%(libdir)s/gstreamer-1.0/libgstandroidmedia.la',
+        ],
+    }
+
+    files_plugins_sys = []
+    files_plugins_sys_devel = []
+    platform_files_plugins_sys = {
+        Platform.DARWIN: [
+            '%(libdir)s/gstreamer-1.0/libgstapplemedia%(mext)s',
+        ],
+        Platform.IOS: [
+            '%(libdir)s/gstreamer-1.0/libgstapplemedia%(mext)s',
+        ],
+    }
+    platform_files_plugins_sys_devel = {
+        Platform.DARWIN: [
+            '%(libdir)s/gstreamer-1.0/libgstapplemedia.a', '%(libdir)s/gstreamer-1.0/libgstapplemedia.la',
+        ],
+        Platform.IOS: [
+            '%(libdir)s/gstreamer-1.0/libgstapplemedia.a', '%(libdir)s/gstreamer-1.0/libgstapplemedia.la',
+        ],
+    }
+
+    def prepare(self):
+        # OS hardware H.264 (royalty covered by the device's MPEG-LA license).
+        if Platform.is_apple(self.config.target_platform):
+            self.meson_options['applemedia'] = 'enabled'
+        if self.config.target_platform == Platform.ANDROID:
+            self.meson_options['androidmedia'] = 'enabled'

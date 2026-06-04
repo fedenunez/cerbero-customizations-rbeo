@@ -26,8 +26,8 @@ class Package(package.Package):
              'gstreamer-1.0:libs:plugins_core',
              'gst-plugins-base-1.0:libs:plugins_core:plugins_playback:plugins_codecs:plugins_net',
              'gst-plugins-good-1.0:plugins_net:plugins_codecs',                  # rtpmanager, rtp, udp, vpx
-             'gst-plugins-bad-1.0:libs:plugins_net:plugins_effects:plugins_codecs',  # webrtcbin, dtls, sctp, srtp, webrtcdsp, openh264
-             'opus:libs', 'libvpx:libs', 'openh264:libs', 'libsrtp:libs']
+             'gst-plugins-bad-1.0:libs:plugins_net:plugins_effects:plugins_codecs:plugins_sys',  # webrtcbin, dtls, sctp, srtp, webrtcdsp + hardware H.264 (applemedia/androidmedia)
+             'opus:libs', 'libvpx:libs', 'libsrtp:libs']
 
     files_devel = ['libnice:plugins_net_devel','libevent','zlib',
                    'gstreamer-1.0', 'gst-plugins-base-1.0', 'gst-plugins-bad-1.0']
