@@ -30,8 +30,10 @@ class Recipe(recipe.Recipe):
         if self.config.target_platform == Platform.WINDOWS:
             self.configure_options += ['-DWIN32=1']
         if self.config.target_platform == Platform.ANDROID:
-            # configure for android
-            self.configure_options += ['-DANDROID_NDK=1']
+            # configure for android: do NOT set -DANDROID_NDK (it is the NDK *path*,
+            # not a bool; Cerbero already supplies the NDK via CMAKE_TOOLCHAIN_FILE +
+            # ANDROID_ABI/ANDROID_PLATFORM). Passing =1 made the toolchain look for the
+            # NDK under a dir literally named "1" and fail to find clang/source.properties.
             self.append_env('CXXFLAGS', '-frtti')
 
         self.configure_options += ['-DZLIB_ROOT=%s' % self.config.prefix]
