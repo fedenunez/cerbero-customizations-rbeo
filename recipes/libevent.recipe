@@ -13,7 +13,9 @@ class Recipe(recipe.Recipe):
     licenses = [{License.BSD_like: ['LICENSE']}]
 
     btype = BuildType.CMAKE
-    configure_options = ' -DBUILD_SHARED_LIBS=1 -DBUILD_STATIC_LIBS=1 -DEVENT__LIBRARY_TYPE=STATIC -DEVENT__DISABLE_OPENSSL=ON '
+    # libevent 2.1.12 declares cmake_minimum_required < 3.5, which modern CMake (4.x,
+    # shipped by 1.28 bootstrap) refuses; this flag re-enables the old policy compat.
+    configure_options = ['-DBUILD_SHARED_LIBS=1', '-DBUILD_STATIC_LIBS=1', '-DEVENT__LIBRARY_TYPE=STATIC', '-DEVENT__DISABLE_OPENSSL=ON', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5']
 
     deps = ['zlib']
     platform_deps = {Platform.ANDROID: ['gnustl']}
@@ -26,13 +28,13 @@ class Recipe(recipe.Recipe):
     files_devel = ['include/event2','include','lib/libevent.a','lib/libevent_core.a', 'lib/libevent_extra.a'] 
     def prepare(self):
         if self.config.target_platform == Platform.WINDOWS:
-            self.configure_options += ' -DWIN32=1'
+            self.configure_options += ['-DWIN32=1']
         if self.config.target_platform == Platform.ANDROID:
             # configure for android
-            self.configure_options += ' -DANDROID_NDK=1 '
+            self.configure_options += ['-DANDROID_NDK=1']
             self.append_env('CXXFLAGS', '-frtti')
 
-        self.configure_options += ' -DZLIB_ROOT=%s ' % self.config.prefix
+        self.configure_options += ['-DZLIB_ROOT=%s' % self.config.prefix]
 
 
     async def install(self):

@@ -1,0 +1,144 @@
+name: Build & Release rbeolibs
+
+# Builds the rbeolibs bundle for every platform and publishes the artifacts.
+# - On a version tag (v*): attaches all platform bundles to a GitHub Release.
+# - Manual run (workflow_dispatch): builds and uploads bundles as workflow artifacts.
+#
+# NOTE: GitHub Actions is FREE with unlimited minutes on PUBLIC repositories,
+# including the macOS runners used for the iOS/macOS jobs. The macOS 10x minute
+# multiplier only applies to PRIVATE repos.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write          # required for the release job to create/update Releases
+
+concurrency:
+  group: rbeolibs-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 350     # Cerbero builds the whole tree (incl. gstreamer-1.0); < 6h job cap
+    strategy:
+      fail-fast: false       # one platform failing must not block the others
+      matrix:
+        include:
+          - target: ios
+            os: macos-14
+            make_target: ios
+          - target: macos
+            os: macos-14
+            make_target: macos
+          - target: android
+            os: ubuntu-latest
+            make_target: android
+          - target: linux
+            os: ubuntu-latest
+            make_target: linux
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0     # full history so the Makefile's git short-hash BUILD_VERSION works
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Cerbero drives source checkouts via git and commits applied patches,
+      # so a git identity must exist on the runner.
+      - name: Configure git identity
+        run: |
+          git config --global user.email "ci@rbeolibs.local"
+          git config --global user.name "rbeolibs CI"
+
+      - name: Free up disk space (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk /opt/ghc /usr/local/share/boost || true
+          df -h
+
+      - name: Install host prerequisites (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential autoconf automake libtool pkg-config gettext \
+            bison flex ninja-build cmake python3-setuptools python3-pip \
+            git xz-utils unzip rsync
+          # `cerbero bootstrap` installs the remaining platform-specific deps.
+
+      - name: Install host prerequisites (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install ninja cmake pkg-config || true
+          sudo xcode-select -p
+
+      - name: Cache Cerbero source downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/cerbero-sources
+          key: cerbero-sources-${{ matrix.target }}-${{ hashFiles('recipes/**', 'packages/**') }}
+          restore-keys: |
+            cerbero-sources-${{ matrix.target }}-
+            cerbero-sources-
+
+      - name: Build (make ${{ matrix.make_target }})
+        run: make ${{ matrix.make_target }}
+
+      - name: Collect bundles
+        run: |
+          mkdir -p out
+          # Cerbero writes the packaged bundles into the cerbero-1.28/ root.
+          find cerbero-1.28 -maxdepth 1 -type f \
+            \( -name '*.pkg' -o -name '*.tar.gz' -o -name '*.tar.bz2' -o -name '*.tar.xz' \) \
+            -exec cp -v {} out/ \;
+          echo "---- collected ----"
+          ls -lah out/
+          if [ -z "$(ls -A out 2>/dev/null)" ]; then
+            echo "::error::No bundles were produced for ${{ matrix.target }}"
+            exit 1
+          fi
+
+      - name: Upload bundles as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rbeolibs-${{ matrix.target }}
+          path: out/*
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all platform bundles
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Flatten bundles
+        run: |
+          mkdir -p release
+          find dist -type f \
+            \( -name '*.pkg' -o -name '*.tar.gz' -o -name '*.tar.bz2' -o -name '*.tar.xz' \) \
+            -exec cp -v {} release/ \;
+          echo "---- release assets ----"
+          ls -lah release/
+
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
