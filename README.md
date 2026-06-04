@@ -1,36 +1,152 @@
-# Packages for RBEO
+# rbeolibs — native dependency bundle for BeoLivingApp
 
-Welcome to the RBEO customizations repository! This repo contains the tweaks needed to build the open-source libraries for RBEO APP, using the Cerbero build system. With Cerbero, you can create libraries for both iOS and Android using a single, unified build system.
+This repository builds **rbeolibs**, a single distributable bundle of open-source
+networking / crypto / multimedia libraries, cross-compiled for **iOS, macOS,
+Android and Linux** with [Cerbero](https://gitlab.freedesktop.org/gstreamer/cerbero)
+(GStreamer's multi-platform build aggregator).
 
-Cerbero is a powerful and friendly build system used by the GStreamer community to compile their libraries for multiple platforms. It's an excellent choice for bundling open-source dependencies for mobile applications.
+It does **not** vendor Cerbero — it only provides the *missing recipes* and the
+*packaging definitions*, layered on top of a checked-out Cerbero tree (currently
+**1.28**, set by `CERBERO_VERSION` in the `Makefile`).
 
-In this repository, we define the missing recipes in Cerbero for our target application and package all the libraries together.
+## What's in the bundle
 
-The result of the build system is a distributable tar.gz or iOS Framework that you can easily add to your mobile project.
+`libnice` (ICE/STUN/TURN + its GStreamer plugin), `glib`, `openssl`, `libcurl`,
+`libevent`, `libffi`, `libiconv`, `zlib`, `pcre2`, and `proxy-libintl`
+(everywhere except Linux, whose glibc already provides gettext).
 
-In order to use the library on IOS you will need to:
-- add the created Framework into Link Binary With Libraries (Project settings -> Build Phases)
-- add 
+## Installing a released bundle
 
-## Building
+Prebuilt bundles for every platform are published on the
+[**Releases page**](https://github.com/fedenunez/cerbero-customizations-rbeo/releases).
+Each release ships, per platform, a **runtime** bundle (the libraries) and a
+**devel** bundle (headers + static libs / `.pc` files). Replace `<version>`
+below with the release you downloaded (e.g. `1.28_5d65e09`).
 
-Just run `make [android/ios]`, this will fetch Cerbero and install our extensions.
+### iOS
 
-You can edit the CERBERO version in the Makefile.
+Assets: `ios-framework-<version>-universal.pkg` (runtime),
+`rbeolibs-devel-<version>-ios-universal.pkg` (headers + static libs).
 
-If you change the target platform (android/ios), please run `make clean` before trying to build again.
+The runtime `.pkg` wraps `Rbeolibs.framework`. Either install the `.pkg`
+(it deploys to `/Library/Developer/Rbeolibs/iPhone.sdk`) or extract the
+framework directly:
 
-## Extending or repurposing this
-
-Just add the recipes or packages that you want in the correct folder, edit the Makefile to point to your package, and run it.
-
-This Makefile will install anything that you place in the recipe or package folder in the appropriate cerbero-$version folder, as a link to the original recipe. Then you can jump into that folder and manually run Cerbero to fine-tune your recipe or package as:
-
+```bash
+pkgutil --expand-full ios-framework-<version>-universal.pkg out
+# framework: out/.../Payload/Rbeolibs.framework
 ```
-./cerbero-uninstalled -c config/cross-ios-universal.cbc build myLovelyRecipe
-```
-or
-```
-./cerbero-uninstalled -c config/cross-ios-universal.cbc package myLovelyPackage
+
+In Xcode, drag `Rbeolibs.framework` into your target →
+**General → Frameworks, Libraries, and Embedded Content** (or *Build Phases →
+Link Binary With Libraries*), and add the headers from the devel package to your
+header search path.
+
+> **Note:** the framework is a *fat* universal binary (device `arm64` +
+> simulator `x86_64`). That's fine for local builds, but Xcode rejects mixed
+> device+simulator slices in App Store archives, and there is no `arm64`
+> **simulator** slice (Apple-Silicon Macs). For store distribution or simulator
+> runs on Apple Silicon, build an `.xcframework` (Cerbero's `xcframework`
+> subcommand) instead.
+
+### macOS
+
+Assets: `rbeolibs-<version>-universal.pkg` (runtime),
+`rbeolibs-devel-<version>-universal.pkg` (devel).
+
+Installing the runtime `.pkg` deploys `Rbeolibs.framework` to
+`/Library/Frameworks/`. Link it in Xcode (it's on the default framework search
+path) or embed it in your app bundle.
+
+### Android
+
+Assets: `rbeolibs-android-universal-<version>-runtime.tar.xz` (shared libs),
+`rbeolibs-android-universal-<version>.tar.xz` (full: + headers and static libs).
+
+```bash
+tar xf rbeolibs-android-universal-<version>.tar.xz -C rbeolibs-android
 ```
 
+The extracted tree contains the per-ABI (`armeabi-v7a`, `arm64-v8a`, `x86`,
+`x86_64`) shared libraries and headers. Wire it into your NDK build:
+
+- **Gradle / jniLibs:** copy each ABI's `*.so` into `src/main/jniLibs/<abi>/`.
+- **CMake (`externalNativeBuild`):** add the bundle's `include/` to your include
+  path and link the `.so`/`.a` from its `lib/` dir (or use the shipped
+  `lib/pkgconfig/*.pc`).
+
+### Linux (x86_64)
+
+Assets: `rbeolibs-linux-x86_64-<version>.tar.xz` (runtime),
+`rbeolibs-linux-x86_64-<version>-devel.tar.xz` (headers + `.pc`).
+
+```bash
+tar xf rbeolibs-linux-x86_64-<version>.tar.xz -C "$HOME/rbeolibs"
+# build against it via pkg-config:
+export PKG_CONFIG_PATH="$HOME/rbeolibs/lib/pkgconfig"
+export LD_LIBRARY_PATH="$HOME/rbeolibs/lib:$LD_LIBRARY_PATH"
+pkg-config --cflags --libs glib-2.0 libcurl nice
+```
+
+## Building from source
+
+You need the host toolchains (Xcode for iOS/macOS); Cerbero's `bootstrap` step
+fetches the rest (e.g. the Android NDK, Rust, CMake/Ninja).
+
+```bash
+make ios      # iOS universal framework (.pkg)
+make macos    # macOS universal framework (.pkg)
+make android  # Android, all ABIs (.tar.xz)
+make linux    # Linux x86_64 (.tar.xz) — run on a Linux host
+```
+
+- The first run clones Cerbero into `cerbero-<version>/` (git-ignored) and
+  symlinks everything in `recipes/` and `packages/` into it, then runs Cerbero.
+- **When switching target platform, run the matching clean first:**
+  `make clean-ios | clean-macos | clean-android | clean-linux`
+  (`make clean` only prints a reminder).
+- `BUILD_VERSION` (`<CERBERO_VERSION>_<git-short-hash>`) is stamped into the
+  package version. Bump `CERBERO_VERSION` in the `Makefile` to target another
+  Cerbero release.
+
+### Working on a single recipe / package
+
+After a `make` has linked the files in, drive Cerbero directly:
+
+```bash
+cd cerbero-1.28
+./cerbero-uninstalled -c config/cross-ios-universal.cbc build <recipe>
+./cerbero-uninstalled -c config/cross-ios-universal.cbc package rbeolibs
+```
+
+(macOS: `config/cross-macos-universal.cbc`; Android:
+`config/cross-android-universal.cbc`; Linux: no `-c` flag — native host build.)
+
+## Continuous builds & releases
+
+`.github/workflows/build-and-release.yml` builds all four platforms on GitHub
+Actions:
+
+- **Push a `v*` tag** → builds every platform and publishes a GitHub **Release**
+  with all bundles attached (only when *all four* platforms succeed).
+- **Manual "Run workflow"** → builds and uploads the bundles as downloadable
+  **artifacts** (no Release).
+
+GitHub Actions (including the macOS runners) is free with unlimited minutes on
+public repositories.
+
+## Licensing
+
+The bundled libraries are **LGPL-2.1+ / BSD** and are fine to use in
+**closed-source**, commercial App Store / Play Store apps. The one obligation is
+LGPL *relinking*: ship the libraries dynamically (framework / `.so`) — or provide
+the object files so a user could relink — and include the LGPL attribution
+notices. **Your own application source stays private.** GPL / patent-encumbered
+plugins are deliberately excluded.
+
+## Extending
+
+Add `recipes/<name>.recipe` (plus any patches under `recipes/<name>/`) and
+reference it in `packages/rbeolibs-base.package`'s `files`, then run `make` — the
+Makefile's symlink rules pick up new files automatically. See `CLAUDE.md` for the
+full architecture and the 1.28 recipe layout.
