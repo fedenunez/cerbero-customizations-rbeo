@@ -88,6 +88,60 @@ export LD_LIBRARY_PATH="$HOME/rbeolibs/lib:$LD_LIBRARY_PATH"
 pkg-config --cflags --libs glib-2.0 libcurl nice
 ```
 
+## Consuming from CMake
+
+The bundle's pkg-config `.pc` files are **relocatable**
+(`prefix=${pcfiledir}/../..`), so they resolve correctly wherever you extract
+them — no prefix rewriting needed.
+
+### Linux / Android — pkg-config
+
+```cmake
+find_package(PkgConfig REQUIRED)
+
+# RBEOLIBS_ROOT = where you extracted the bundle (the per-ABI dir on Android).
+# Use PKG_CONFIG_LIBDIR (not PATH) so it cannot fall back to host .pc files.
+set(ENV{PKG_CONFIG_LIBDIR} "${RBEOLIBS_ROOT}/lib/pkgconfig")
+
+pkg_check_modules(RBEO REQUIRED IMPORTED_TARGET
+    glib-2.0 gobject-2.0 gio-2.0 nice libcurl libevent)
+
+target_link_libraries(myapp PRIVATE PkgConfig::RBEO)
+```
+
+`PkgConfig::RBEO` carries the include dirs, lib dirs and transitive link flags.
+
+### Android NDK
+
+The bundle is **per-ABI**, so select the right prefix with `${ANDROID_ABI}`:
+
+```cmake
+set(RBEOLIBS_ROOT "${CMAKE_CURRENT_LIST_DIR}/rbeolibs-android/${ANDROID_ABI}")
+```
+
+If `pkg-config` is not available in your NDK toolchain, link with manual imported
+targets instead (no pkg-config required):
+
+```cmake
+set(RBEO "${CMAKE_CURRENT_LIST_DIR}/rbeolibs-android/${ANDROID_ABI}")
+add_library(rbeo::curl SHARED IMPORTED)
+set_target_properties(rbeo::curl PROPERTIES
+    IMPORTED_LOCATION "${RBEO}/lib/libcurl.so"
+    INTERFACE_INCLUDE_DIRECTORIES "${RBEO}/include")
+target_link_libraries(myapp PRIVATE rbeo::curl)   # repeat per library
+```
+
+The `.so` files must also be packaged into the APK — drop them in
+`src/main/jniLibs/<abi>/` (Gradle picks them up automatically) or point
+`jniLibs.srcDirs` at the bundle's `lib` dirs.
+
+### iOS / macOS — link the framework
+
+```cmake
+find_library(RBEOLIBS Rbeolibs PATHS "${RBEOLIBS_ROOT}" REQUIRED)
+target_link_libraries(myapp PRIVATE ${RBEOLIBS})
+```
+
 ## Building from source
 
 You need the host toolchains (Xcode for iOS/macOS); Cerbero's `bootstrap` step
