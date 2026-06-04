@@ -94,6 +94,24 @@ The bundle's pkg-config `.pc` files are **relocatable**
 (`prefix=${pcfiledir}/../..`), so they resolve correctly wherever you extract
 them — no prefix rewriting needed.
 
+### Easiest: the `rbeolibs.cmake` helper
+
+This repo ships [`cmake/rbeolibs.cmake`](cmake/rbeolibs.cmake), which exposes the
+whole bundle as one imported target, `rbeolibs::rbeolibs`, and handles the
+per-ABI selection / pkg-config / framework details for you:
+
+```cmake
+set(RBEOLIBS_ROOT "/path/to/extracted/rbeolibs")   # or pass -DRBEOLIBS_ROOT=...
+include("/path/to/rbeolibs.cmake")
+target_link_libraries(myapp PRIVATE rbeolibs::rbeolibs)
+```
+
+On Android, point `RBEOLIBS_ROOT` at the directory holding the per-ABI prefixes —
+it picks the one matching `${ANDROID_ABI}` automatically. Override the exposed
+modules with `set(RBEOLIBS_MODULES glib-2.0 gio-2.0 nice libcurl ...)`.
+
+The manual approaches below are equivalent if you'd rather not use the helper.
+
 ### Linux / Android — pkg-config
 
 ```cmake
