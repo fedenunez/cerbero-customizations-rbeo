@@ -96,6 +96,20 @@ jobs:
             cerbero-sources-${{ matrix.target }}-
             cerbero-sources-
 
+      # webrtc-audio-processing (echo-cancel webrtcdsp dep) is fetched from
+      # freedesktop.org, whose apex host returns HTTP 418 to CI, and the
+      # GStreamer mirror lacks 2.1. The www. host serves the identical tarball
+      # (same checksum), so seed it into Cerbero's source cache before building.
+      - name: Pre-fetch webrtc-audio-processing (freedesktop apex 418 workaround)
+        run: |
+          d="$HOME/.cache/cerbero-sources/webrtc-audio-processing-2.1"
+          f="$d/webrtc-audio-processing-2.1.tar.gz"
+          if [ ! -f "$f" ]; then
+            mkdir -p "$d"
+            curl -fsSL --retry 3 -o "$f" \
+              "https://www.freedesktop.org/software/pulseaudio/webrtc-audio-processing/webrtc-audio-processing-2.1.tar.gz"
+          fi
+
       - name: Build (make ${{ matrix.make_target }})
         run: make ${{ matrix.make_target }}
 
