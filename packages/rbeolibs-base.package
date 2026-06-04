@@ -13,8 +13,10 @@ class Package(package.Package):
 
     # On macOS the SDKPackage framework packager expects the merged framework
     # dylib lib/Rbeolibs to already exist; rbeolibs-osx-framework produces it.
-    # (iOS builds the merged static lib in its own packager, so no dep there.)
-    platform_deps = {
+    # Must go in platform_files (builds + includes the recipe), NOT platform_deps
+    # (which is for package deps). iOS builds the merged static lib in its own
+    # packager, so it is not needed there.
+    platform_files = {
         Platform.DARWIN: ['rbeolibs-osx-framework'],
     }
 
