@@ -1,0 +1,49 @@
+# -*- Mode: Python -*- vi:si:et:sw=4:sts=4:ts=4:syntax=python
+import os
+from cerbero.ide.xcode.fwlib import DynamicFrameworkLibrary
+
+
+class Recipe(recipe.Recipe):
+    # Produces the single merged framework dylib `lib/Rbeolibs` that the macOS
+    # (DARWIN) SDKPackage framework packager copies into Rbeolibs.framework.
+    # Modeled on upstream `gstreamer-1.0-osx-framework`. Only built on macOS
+    # (added via rbeolibs-base's Platform.DARWIN platform_deps); iOS builds the
+    # merged static lib in its own packager, so it does not need this.
+    name = 'rbeolibs-osx-framework'
+    version = '0.1'
+    stype = SourceType.CUSTOM
+    btype = BuildType.CUSTOM
+
+    # Build everything whose symbols we re-export before melding.
+    deps = ['glib', 'libnice', 'curl', 'openssl', 'libffi', 'libevent',
+            'libiconv', 'zlib', 'proxy-libintl', 'pcre2']
+
+    files_library = ['lib/Rbeolibs']
+
+    # pkg-config names whose .dylib symbols get re-exported into lib/Rbeolibs.
+    # DynamicFrameworkLibrary expands these transitively and silently skips any
+    # lib that has no .dylib (e.g. libevent is static-only), so the static libs
+    # remain available through the devel package instead.
+    framework_libs = ['glib-2.0', 'gobject-2.0', 'gio-2.0', 'gmodule-2.0',
+                      'gthread-2.0', 'nice', 'libcurl', 'openssl', 'libffi']
+
+    def prepare(self):
+        # We only re-export symbols; there is nothing to dsymutil.
+        self.skip_steps = [BuildSteps.DSYMUTIL]
+
+    async def install(self):
+        libname = os.path.join(self.config.libdir, 'Rbeolibs')
+        install_name = '@rpath/Rbeolibs.framework/Versions/1.0/lib/Rbeolibs'
+        fwlib = DynamicFrameworkLibrary(
+            self.config.min_osx_sdk_version,
+            self.config.target_distro,
+            libname,
+            install_name,
+            self.framework_libs,
+            self.config.target_arch,
+            env=self.env,
+        )
+        fwlib.create()
+
+    def have_symbol_files(self):
+        return False

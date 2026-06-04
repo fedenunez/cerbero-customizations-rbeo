@@ -11,6 +11,13 @@ class Package(package.Package):
 
     deps = []
 
+    # On macOS the SDKPackage framework packager expects the merged framework
+    # dylib lib/Rbeolibs to already exist; rbeolibs-osx-framework produces it.
+    # (iOS builds the merged static lib in its own packager, so no dep there.)
+    platform_deps = {
+        Platform.DARWIN: ['rbeolibs-osx-framework'],
+    }
+
     files = ['libnice:libs:plugins_net','glib:libs:lang:bins:schemas', 'openssl:libs','libffi:libs','curl', 'libevent:libs','libiconv:libs', 'zlib:libs','proxy-libintl:libs','pcre2:libs']
 
     files_devel = ['libnice:plugins_net_devel','libevent','zlib','proxy-libintl']
