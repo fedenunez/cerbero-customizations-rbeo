@@ -24,6 +24,12 @@ class Recipe(custom.GStreamer):
     # Disable every plugin by default, then explicitly enable the WebRTC set.
     meson_options = {
         'auto_features': 'disabled',
+        # The applemedia/androidmedia hardware H.264 codecs require GstGL; in
+        # gst-plugins-bad meson.build `gstgl_dep` is only looked up when the `gl`
+        # option is enabled (required: get_option('gl')). auto_features=disabled
+        # turns it off, so enable it explicitly. GstGL itself comes from
+        # gst-plugins-base (built on all mobile platforms).
+        'gl': 'enabled',
         'dtls': 'enabled',
         'sctp': 'enabled',
         'sctp-internal-usrsctp': 'enabled',
