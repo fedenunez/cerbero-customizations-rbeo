@@ -27,10 +27,15 @@ class Package(package.Package):
              'gst-plugins-base-1.0:libs:plugins_core:plugins_playback:plugins_codecs:plugins_net',
              'gst-plugins-good-1.0:plugins_net:plugins_codecs',                  # rtpmanager, rtp, udp, vpx
              'gst-plugins-bad-1.0:libs:plugins_net:plugins_effects:plugins_codecs:plugins_sys',  # webrtcbin, dtls, sctp, srtp, webrtcdsp + hardware H.264 (applemedia/androidmedia)
-             'opus:libs', 'libvpx:libs', 'libsrtp:libs']
+             'opus:libs', 'libvpx:libs', 'libsrtp:libs',
+             # ffmpeg/libav: the C++ engine links libav* directly (decode-only,
+             # LGPL, OS hardware decode compiled in). Not gst-libav, not a
+             # GStreamer pipeline -- just the libraries. See recipes/ffmpeg.recipe.
+             'ffmpeg:libs']
 
     files_devel = ['libnice:plugins_net_devel','libevent','zlib',
-                   'gstreamer-1.0', 'gst-plugins-base-1.0', 'gst-plugins-bad-1.0']
+                   'gstreamer-1.0', 'gst-plugins-base-1.0', 'gst-plugins-bad-1.0',
+                   'ffmpeg']
 
     def prepare(self):
         # proxy-libintl is glib's gettext shim for platforms whose libc lacks

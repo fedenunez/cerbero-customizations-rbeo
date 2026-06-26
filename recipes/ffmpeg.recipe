@@ -1,0 +1,157 @@
+# -*- Mode: Python -*- vi:si:et:sw=4:sts=4:ts=4:syntax=python
+#
+# LOCAL OVERRIDE of upstream ffmpeg (Cerbero 1.28).
+#
+# rbeolibs ships the ffmpeg libraries (libav*) so the BeoLivingApp engine can
+# link a decode capable libav directly and uniformly on every platform Cerbero
+# targets, instead of ad-hoc per-platform wiring. This is the SAME ffmpeg that
+# gst-libav builds against; we just ship the libs, not the gst-libav plugin.
+#
+# Two deliberate deltas vs. stock 1.28 (everything else is verbatim upstream so
+# the version-specific Meson patch keeps applying):
+#
+#   1. LICENSING: kept LGPL (LGPLv2_1Plus). Upstream's defaults already give us
+#      this -- `nonfree` and `version3` are disabled and no `gpl` option is
+#      enabled -- so this is a no-GPL / decode-friendly build out of the box. We
+#      do NOT change it; we just rely on it.
+#   2. HARDWARE DECODE: stock sets `hwaccels: disabled`, which (because
+#      `hwaccels` is one of avcodec_components, fed through
+#      `conf.set10(component, get_option(component).allowed())` in the Meson
+#      port) globally kills EVERY hwaccel -- videotoolbox/mediacodec included.
+#      So we flip the master switch to `enabled` and turn on the OS hardware
+#      backends per platform: VideoToolbox on Apple, MediaCodec (which requires
+#      JNI) on Android. The proprietary/GPL-adjacent backends (vaapi, dxva2,
+#      d3d11va, nvenc, cuda, ...) stay disabled via their own options, so the
+#      master switch does not pull them in.
+#
+# The engine link line must add the platform frameworks/libs these backends
+# reference: Apple -> -framework VideoToolbox -framework CoreMedia
+# -framework CoreVideo -framework CoreFoundation (and QuartzCore); Android ->
+# -lmediandk -landroid.
+#
+# RE-SYNC when bumping the Cerbero version: copy the upstream ffmpeg.recipe
+# (version, tarball_checksum, patches, file lists, post_install) and re-apply
+# ONLY the two deltas above. Verify the `ffmpeg/*.patch` files still ship in the
+# upstream tree (we don't vendor them -- the symlink step only shadows the
+# .recipe file, leaving the upstream recipes/ffmpeg/ patch dir in place).
+from cerbero.tools.libtool import LibtoolLibrary
+
+class Recipe(recipe.Recipe):
+    name = 'ffmpeg'
+    version = '7.1'
+    licenses = [License.LGPLv2_1Plus]
+    stype = SourceType.TARBALL
+    url = 'https://ffmpeg.org/releases/%(name)s-%(version)s.tar.xz'
+    tarball_checksum = '40973d44970dbc83ef302b0609f2e74982be2d85916dd2ee7472d30678a7abe6'
+    patches = [
+        # https://gitlab.freedesktop.org/gstreamer/meson-ports/ffmpeg/-/tree/a66a916f069fe490a3fe418ec54f9cd05dd608be
+        name + '/0001-Add-Meson-build.patch',
+        # https://gitlab.freedesktop.org/gstreamer/meson-ports/ffmpeg/-/merge_requests/151
+        name + '/fix-textrels.patch',
+    ]
+
+    btype = BuildType.MESON
+    meson_options = {
+        'avdevice': 'disabled',
+        'programs': 'disabled',
+        'flac_encoder': 'disabled',
+        'protocols': 'disabled',
+        'devices': 'disabled',
+        'network': 'disabled',
+        # Master hwaccel switch ON (delta vs. stock 'disabled'). Required for any
+        # hwaccel to build; individual proprietary backends stay disabled below,
+        # and the OS backends we want are enabled per-platform in prepare().
+        'hwaccels': 'enabled',
+        'dxva2': 'disabled',
+        'vdpau': 'disabled',
+        'filters': 'disabled',
+        'psnr_filter': 'enabled',
+        'ssim_filter': 'enabled',
+        'scale_filter': 'enabled',
+        'yadif_filter': 'enabled',
+        # Uncomment the following option once implemented in the port
+        # 'doc': 'disabled',
+        'd3d11va': 'disabled',
+        'audiotoolbox': 'disabled',
+        # VideoToolbox enabled per-platform (Apple) in prepare().
+        'videotoolbox': 'disabled',
+        'vaapi': 'disabled',
+        'crystalhd': 'disabled',
+        # MediaCodec + JNI enabled per-platform (Android) in prepare().
+        'mediacodec': 'disabled',
+        'mediafoundation' : 'disabled',
+        'nvenc': 'disabled',
+        'mmal': 'disabled',
+        'omx': 'disabled',
+        'omx_rpi': 'disabled',
+        'cuda': 'disabled',
+        'cuvid': 'disabled',
+        'libmfx': 'disabled',
+        'libnpp': 'disabled',
+        'iconv': 'disabled',
+        'jni': 'disabled',
+        'v4l2_m2m': 'disabled',
+        'vulkan': 'disabled',
+        'tests': 'disabled', # To not waste time
+        # These two are redundant with Meson
+        # 'stripping': 'disabled',
+        # 'optimizations': 'enabled,
+        'nonfree': 'disabled',
+        'version3': 'disabled',
+    }
+
+    deps = ['bzip2', 'zlib']
+
+    files_libs = ['libavcodec', 'libavformat', 'libavutil', 'libswresample', 'libavfilter', 'libswscale']
+    files_devel = []
+
+    def prepare(self):
+        # OS hardware decode backends (royalty covered by the device's MPEG-LA
+        # license; no software H.264/H.265 decoder pulled in here). VideoToolbox
+        # on Apple, MediaCodec on Android -- the latter requires JNI.
+        if Platform.is_apple(self.config.target_platform):
+            self.meson_options['videotoolbox'] = 'enabled'
+        if self.config.target_platform == Platform.ANDROID:
+            self.meson_options['mediacodec'] = 'enabled'
+            self.meson_options['jni'] = 'enabled'
+
+        # Simulator doesn't like shared libs
+        if Subsystem.is_apple_simulator(self.config.target_subsystem):
+            self.library_type = LibraryType.STATIC
+
+        if self.config.target_arch == Architecture.X86 and self.config.target_platform == Platform.ANDROID:
+            self.meson_options['asm'] = 'disabled'
+
+        # Populate self.files_devel
+        files_devel_tpl = ['%(libdir)s/{}.la', '%(libdir)s/pkgconfig/{}.pc', 'include/{}']
+        if self.library_type != LibraryType.SHARED:
+            files_devel_tpl += ['%(libdir)s/{}.a']
+        for lib in self.files_libs:
+            self.files_devel += [tpl.format(lib) for tpl in files_devel_tpl]
+
+    def post_install(self):
+    # Meson does not generate la files
+        LibtoolLibrary('avcodec', None, None, None,
+                       self.config.libdir, self.config.target_platform,
+                       deps=['swresample', 'avutil', 'z'],
+                       static_only=self.library_type == LibraryType.STATIC).save()
+        LibtoolLibrary('avfilter', None, None, None,
+                       self.config.libdir, self.config.target_platform,
+                       deps=['avformat', 'avcodec', 'swresample', 'avutil'],
+                       static_only=self.library_type == LibraryType.STATIC).save()
+        LibtoolLibrary('avformat', None, None, None,
+                       self.config.libdir, self.config.target_platform,
+                       deps=['avcodec', 'swresample', 'avutil', 'bz2', 'z'],
+                       static_only=self.library_type == LibraryType.STATIC).save()
+        LibtoolLibrary('avutil', None, None, None,
+                       self.config.libdir, self.config.target_platform,
+                       static_only=self.library_type == LibraryType.STATIC).save()
+        LibtoolLibrary('swresample', None, None, None,
+                       self.config.libdir, self.config.target_platform,
+                       deps=['avutil'],
+                       static_only=self.library_type == LibraryType.STATIC).save()
+        LibtoolLibrary('swscale', None, None, None,
+                       self.config.libdir, self.config.target_platform,
+                       deps=['avutil'],
+                       static_only=self.library_type == LibraryType.STATIC).save()
+        super().post_install()
