@@ -42,27 +42,68 @@ class Recipe(custom.GStreamer):
     deps = ['gstreamer-1.0', 'gst-plugins-base-1.0',
             'libnice', 'openssl', 'libsrtp', 'webrtc-audio-processing']
 
+    # gst-plugins-bad builds its gst-libs (gst-libs/gst/*) and runs
+    # install_headers() UNCONDITIONALLY -- `auto_features=disabled` only gates
+    # PLUGINS, not these helper libraries. So every one of them lands in each
+    # per-arch prefix regardless of our minimal plugin set. The iOS framework
+    # packager copies headers from the merged `ios_universal` prefix, and the
+    # universal-merge only carries across files that a recipe explicitly lists.
+    # If we list only the webrtc subset, the merge drops the other gst-lib
+    # headers and the packager dies one-by-one (analytics-meta-prelude.h, then
+    # audio-bad-prelude.h, ...). So we mirror upstream's full gst-lib library +
+    # header set here -- they are always built anyway -- and only EXCLUDE
+    # `vulkan`, the one gst-lib our no-Vulkan config never produces (listing it
+    # would point the merge at a file that does not exist). All LGPL, deps are
+    # core/base only. Re-sync against upstream gst-plugins-bad-1.0.recipe when
+    # bumping Cerbero.
     files_libs = [
-        # libgstanalytics-1.0: the GstAnalytics metadata library. Its
-        # gst-libs/gst/analytics/meson.build builds the library and runs
-        # install_headers() UNCONDITIONALLY -- auto_features=disabled does NOT
-        # turn it off -- so it is always present in each per-arch prefix. We must
-        # list it here (and its headers below) so the iOS universal-merge copies
-        # it into the merged prefix; otherwise the framework packager dies trying
-        # to copy gst/analytics/*.h that the merge skipped. LGPL, no extra deps
-        # (core + video only).
+        'libgstadaptivedemux-1.0',
         'libgstanalytics-1.0',
+        'libgstbadaudio-1.0',
+        'libgstbasecamerabinsrc-1.0',
+        'libgstcodecparsers-1.0',
+        'libgstcodecs-1.0',
+        'libgstinsertbin-1.0',
+        'libgstisoff-1.0',
+        'libgstmpegts-1.0',
+        'libgstmse-1.0',
+        'libgstphotography-1.0',
+        'libgstplay-1.0',
+        'libgstplayer-1.0',
         'libgstsctp-1.0',
+        'libgsttranscoder-1.0',
+        'libgsturidownloader-1.0',
         'libgstwebrtc-1.0',
         'libgstwebrtcnice-1.0',
     ]
 
     files_plugins_devel = [
         'include/gstreamer-1.0/gst/analytics',
+        'include/gstreamer-1.0/gst/audio',
+        'include/gstreamer-1.0/gst/base',
+        'include/gstreamer-1.0/gst/basecamerabinsrc',
+        'include/gstreamer-1.0/gst/codecparsers',
+        'include/gstreamer-1.0/gst/insertbin',
+        'include/gstreamer-1.0/gst/interfaces',
+        'include/gstreamer-1.0/gst/isoff',
+        'include/gstreamer-1.0/gst/mpegts',
+        'include/gstreamer-1.0/gst/mse',
+        'include/gstreamer-1.0/gst/play',
+        'include/gstreamer-1.0/gst/player',
         'include/gstreamer-1.0/gst/sctp',
+        'include/gstreamer-1.0/gst/transcoder',
         'include/gstreamer-1.0/gst/webrtc',
         '%(libdir)s/pkgconfig/gstreamer-analytics-1.0.pc',
+        '%(libdir)s/pkgconfig/gstreamer-bad-audio-1.0.pc',
+        '%(libdir)s/pkgconfig/gstreamer-codecparsers-1.0.pc',
+        '%(libdir)s/pkgconfig/gstreamer-insertbin-1.0.pc',
+        '%(libdir)s/pkgconfig/gstreamer-mpegts-1.0.pc',
+        '%(libdir)s/pkgconfig/gstreamer-mse-1.0.pc',
+        '%(libdir)s/pkgconfig/gstreamer-photography-1.0.pc',
+        '%(libdir)s/pkgconfig/gstreamer-play-1.0.pc',
+        '%(libdir)s/pkgconfig/gstreamer-player-1.0.pc',
         '%(libdir)s/pkgconfig/gstreamer-sctp-1.0.pc',
+        '%(libdir)s/pkgconfig/gstreamer-transcoder-1.0.pc',
         '%(libdir)s/pkgconfig/gstreamer-webrtc-1.0.pc',
         '%(libdir)s/pkgconfig/gstreamer-webrtc-nice-1.0.pc',
     ]
