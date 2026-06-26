@@ -43,14 +43,25 @@ class Recipe(custom.GStreamer):
             'libnice', 'openssl', 'libsrtp', 'webrtc-audio-processing']
 
     files_libs = [
+        # libgstanalytics-1.0: the GstAnalytics metadata library. Its
+        # gst-libs/gst/analytics/meson.build builds the library and runs
+        # install_headers() UNCONDITIONALLY -- auto_features=disabled does NOT
+        # turn it off -- so it is always present in each per-arch prefix. We must
+        # list it here (and its headers below) so the iOS universal-merge copies
+        # it into the merged prefix; otherwise the framework packager dies trying
+        # to copy gst/analytics/*.h that the merge skipped. LGPL, no extra deps
+        # (core + video only).
+        'libgstanalytics-1.0',
         'libgstsctp-1.0',
         'libgstwebrtc-1.0',
         'libgstwebrtcnice-1.0',
     ]
 
     files_plugins_devel = [
+        'include/gstreamer-1.0/gst/analytics',
         'include/gstreamer-1.0/gst/sctp',
         'include/gstreamer-1.0/gst/webrtc',
+        '%(libdir)s/pkgconfig/gstreamer-analytics-1.0.pc',
         '%(libdir)s/pkgconfig/gstreamer-sctp-1.0.pc',
         '%(libdir)s/pkgconfig/gstreamer-webrtc-1.0.pc',
         '%(libdir)s/pkgconfig/gstreamer-webrtc-nice-1.0.pc',
