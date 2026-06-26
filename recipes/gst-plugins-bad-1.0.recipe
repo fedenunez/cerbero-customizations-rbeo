@@ -78,11 +78,13 @@ class Recipe(custom.GStreamer):
     ]
 
     files_plugins_devel = [
+        'include/gstreamer-1.0/gst/adaptivedemux',
         'include/gstreamer-1.0/gst/analytics',
         'include/gstreamer-1.0/gst/audio',
         'include/gstreamer-1.0/gst/base',
         'include/gstreamer-1.0/gst/basecamerabinsrc',
         'include/gstreamer-1.0/gst/codecparsers',
+        'include/gstreamer-1.0/gst/codecs',
         'include/gstreamer-1.0/gst/insertbin',
         'include/gstreamer-1.0/gst/interfaces',
         'include/gstreamer-1.0/gst/isoff',
@@ -92,6 +94,7 @@ class Recipe(custom.GStreamer):
         'include/gstreamer-1.0/gst/player',
         'include/gstreamer-1.0/gst/sctp',
         'include/gstreamer-1.0/gst/transcoder',
+        'include/gstreamer-1.0/gst/uridownloader',
         'include/gstreamer-1.0/gst/webrtc',
         '%(libdir)s/pkgconfig/gstreamer-analytics-1.0.pc',
         '%(libdir)s/pkgconfig/gstreamer-bad-audio-1.0.pc',
