@@ -1,0 +1,84 @@
+# -*- Mode: Python -*- vi:si:et:sw=4:sts=4:ts=4:syntax=python
+#
+# LOCAL OVERRIDE of upstream webrtc-audio-processing (Cerbero 1.28).
+#
+# webrtc-audio-processing builds abseil-cpp as a static Meson subproject
+# (`meson_subprojects = ['abseil-cpp']`). That subproject runs install_headers()
+# for the whole `absl/` tree into the prefix, but upstream's files_devel does NOT
+# list it. So on the iOS framework build the absl headers are installed per-arch
+# yet dropped by the universal-merge (which copies only what a recipe's
+# files_list() declares), and the framework packager then dies copying
+# include/absl/base/attributes.h from the merged prefix.
+#
+# The ONLY delta vs. stock 1.28 is adding `include/absl` to files_devel so the
+# merge carries the headers across. abseil is static-linked into
+# libwebrtc-audio-processing-2, so there is no separate absl library to ship --
+# headers are enough. Same root cause as the unconditional gst-plugins-bad
+# gst-lib and ffmpeg libavdevice/libpostproc headers.
+#
+# RE-SYNC when bumping Cerbero: copy upstream webrtc-audio-processing.recipe and
+# re-add the `include/absl` line. The patch files referenced below ship in the
+# upstream recipes/webrtc-audio-processing/ dir, which the symlink step leaves in
+# place (it only shadows the .recipe file).
+
+from cerbero.enums import DistroVersion
+from cerbero.tools.libtool import LibtoolLibrary
+
+class Recipe(recipe.Recipe):
+    name = 'webrtc-audio-processing'
+    version = '2.1'
+    licenses = [{License.BSD_3_Clause: ['COPYING']}]
+    btype = BuildType.MESON
+    stype = SourceType.TARBALL
+    url = 'https://freedesktop.org/software/pulseaudio/%(name)s/%(name)s-%(version)s.tar.gz'
+    tarball_checksum = '35e86b986d02ea15f3d04741a1a5a735ba399bc0fac0ee089c39480e35fc3253'
+
+    patches = [
+        f'{name}/0001-Fix-build-with-GCC-15.1.patch',
+        f'{name}/0001-denormal_disabler-asm-syntax-is-not-supported-by-MSV.patch',
+    ]
+
+    # webrtc-audio-processing links to abseil statically
+    meson_subprojects = ['abseil-cpp']
+
+    files_libs = [
+        'libwebrtc-audio-processing-2',
+    ]
+    files_devel = [
+        'include/webrtc-audio-processing-2',
+        # abseil-cpp subproject installs its public headers here; list them so the
+        # iOS universal-merge carries them and the framework packager can copy
+        # them. abseil is static-linked, so only the headers need shipping.
+        'include/absl',
+        '%(libdir)s/pkgconfig/webrtc-audio-processing-2.pc',
+    ]
+
+    def prepare(self):
+        if self.config.target_platform == Platform.ANDROID:
+            # TODO add --enable-neon=runtime, there is a conflict with cerbero
+            # that defines -mfpu=vfp... plus webrtc-audio-processing build
+            # system is doing it wrong, as it should add -mfpu=neon only for
+            # the files that contains neon intrinsic.
+            android_api = DistroVersion.get_android_api_version(self.config.target_distro_version)
+            if android_api < 24:
+                # -D_FILE_OFFSET_BITS=64 is broken with Android API < 24 for C++
+                # stdio, and enabling Android API 24 breaks the gst-examples build,
+                # so disable this for now.
+                self.append_env('CXXFLAGS', '-U_FILE_OFFSET_BITS')
+        if self.config.target_platform == Platform.WINDOWS:
+            # Does not export symbols correctly for DLLs, so just link statically
+            self.library_type = LibraryType.STATIC
+            # MSVC build fails without this
+            self.meson_options['cpp_std'] = 'c++20'
+
+
+    def post_install(self):
+        dependency_libs = []
+        if self.config.target_platform == Platform.ANDROID:
+            dependency_libs += ['-llog']
+
+        libap = LibtoolLibrary('webrtc-audio-processing-2', None, None, None, self.config.libdir,
+                self.config.target_platform, deps=dependency_libs)
+        libap.save()
+
+        super().post_install()
