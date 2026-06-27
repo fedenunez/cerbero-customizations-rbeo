@@ -129,6 +129,17 @@ class Recipe(recipe.Recipe):
         for lib in self.files_libs:
             self.files_devel += [tpl.format(lib) for tpl in files_devel_tpl]
 
+        # The Meson port calls subdir('libavdevice')/subdir('libpostproc') and
+        # their install_headers() UNCONDITIONALLY (no option guard), so those
+        # public headers land in the prefix even though we build neither library
+        # (avdevice is disabled; postproc is GPL and excluded). List the header
+        # dirs ONLY -- no lib/.pc/.a, since the libraries are not built -- so the
+        # iOS universal-merge carries them across; otherwise the framework
+        # packager dies copying libavdevice/avdevice.h (then
+        # libpostproc/postprocess.h) from the merged prefix. Same root cause as
+        # the unconditional gst-plugins-bad gst-lib headers.
+        self.files_devel += ['include/libavdevice', 'include/libpostproc']
+
     def post_install(self):
     # Meson does not generate la files
         LibtoolLibrary('avcodec', None, None, None,
