@@ -133,6 +133,12 @@ class Recipe(recipe.Recipe):
         # system lib on Apple: -framework Security -framework CoreFoundation.
         if Platform.is_apple(self.config.target_platform):
             self.meson_options['securetransport'] = 'enabled'
+            # The ffmpeg Meson port detects SecureTransport but does NOT add
+            # -framework Security to the libavformat dylib link, so it fails with
+            # undefined _SSLCreateContext/_SecTrustEvaluate/... Add it here.
+            # (CoreFoundation is already linked via VideoToolbox.) Use the
+            # -Wl,-framework,Security form so it survives as a single token.
+            self.append_env('LDFLAGS', '-Wl,-framework,Security')
         else:
             self.meson_options['openssl'] = 'enabled'
 
