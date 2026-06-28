@@ -141,6 +141,10 @@ class Recipe(recipe.Recipe):
             self.append_env('LDFLAGS', '-Wl,-framework,Security')
         else:
             self.meson_options['openssl'] = 'enabled'
+            # OpenSSL >= 3.0 is Apache 2.0, which is incompatible with LGPLv2.1
+            # but allowed under LGPLv3+. rbeolibs ships OpenSSL 3.x, so the port
+            # requires version3=enabled on any non-Apple build.
+            self.meson_options['version3'] = 'enabled'
 
         # Simulator doesn't like shared libs
         if Subsystem.is_apple_simulator(self.config.target_subsystem):
