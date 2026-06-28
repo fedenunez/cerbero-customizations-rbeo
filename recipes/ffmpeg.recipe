@@ -55,9 +55,17 @@ class Recipe(recipe.Recipe):
         'avdevice': 'disabled',
         'programs': 'disabled',
         'flac_encoder': 'disabled',
-        'protocols': 'disabled',
+        # Network + protocols ENABLED (delta vs. stock 'disabled') so ffmpeg
+        # handles RTSP/RTP/HTTP natively -- the RtspMediaClient path -- instead
+        # of decode-only over a custom AVIO. The master `protocols` switch turns
+        # on the built-in protocols (file, tcp, udp, rtp, http, and https/tls
+        # once a TLS backend is picked in prepare()); protocols that need
+        # external libs stay off via their own options. The rtsp/sdp/rtp demuxers
+        # and their RTP depacketizers are left at the 'auto' default and now
+        # build because network is on.
+        'protocols': 'enabled',
         'devices': 'disabled',
-        'network': 'disabled',
+        'network': 'enabled',
         # Master hwaccel switch ON (delta vs. stock 'disabled'). Required for any
         # hwaccel to build; individual proprietary backends stay disabled below,
         # and the OS backends we want are enabled per-platform in prepare().
@@ -100,7 +108,10 @@ class Recipe(recipe.Recipe):
         'version3': 'disabled',
     }
 
-    deps = ['bzip2', 'zlib']
+    # openssl provides the TLS backend for the https/tls protocols on non-Apple
+    # platforms (Apple uses SecureTransport). It is already built in rbeolibs, so
+    # this is mainly a build-ordering dep; harmless on Apple where it is unused.
+    deps = ['bzip2', 'zlib', 'openssl']
 
     files_libs = ['libavcodec', 'libavformat', 'libavutil', 'libswresample', 'libavfilter', 'libswscale']
     files_devel = []
@@ -114,6 +125,16 @@ class Recipe(recipe.Recipe):
         if self.config.target_platform == Platform.ANDROID:
             self.meson_options['mediacodec'] = 'enabled'
             self.meson_options['jni'] = 'enabled'
+
+        # TLS backend for the https/tls protocols. SecureTransport on Apple
+        # (Security.framework, no cerbero dep); OpenSSL elsewhere (shipped in
+        # rbeolibs). The ffmpeg port treats these as mutually exclusive, so
+        # enable exactly one per platform. The engine must link the backing
+        # system lib on Apple: -framework Security -framework CoreFoundation.
+        if Platform.is_apple(self.config.target_platform):
+            self.meson_options['securetransport'] = 'enabled'
+        else:
+            self.meson_options['openssl'] = 'enabled'
 
         # Simulator doesn't like shared libs
         if Subsystem.is_apple_simulator(self.config.target_subsystem):
