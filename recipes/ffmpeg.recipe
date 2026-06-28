@@ -105,17 +105,9 @@ class Recipe(recipe.Recipe):
         # 'stripping': 'disabled',
         # 'optimizations': 'enabled,
         'nonfree': 'disabled',
-        # OpenSSL >= 3.0 (Apache 2.0) is incompatible with LGPLv2.1 but allowed
-        # under LGPLv3+. rbeolibs ships OpenSSL 3.x, so acknowledge LGPLv3+ here.
-        # Apple builds use SecureTransport (no OpenSSL needed) but version3=enabled
-        # is harmless there too. Setting this at class level avoids Cerbero's
-        # universal-build re-parse resetting a prepare()-time mutation.
-        'version3': 'enabled',
+        'version3': 'disabled',
     }
 
-    # openssl provides the TLS backend for the https/tls protocols on non-Apple
-    # platforms (Apple uses SecureTransport). It is already built in rbeolibs, so
-    # this is mainly a build-ordering dep; harmless on Apple where it is unused.
     deps = ['bzip2', 'zlib', 'openssl']
 
     files_libs = ['libavcodec', 'libavformat', 'libavutil', 'libswresample', 'libavfilter', 'libswscale']
@@ -131,21 +123,22 @@ class Recipe(recipe.Recipe):
             self.meson_options['mediacodec'] = 'enabled'
             self.meson_options['jni'] = 'enabled'
 
-        # TLS backend for the https/tls protocols. SecureTransport on Apple
-        # (Security.framework, no cerbero dep); OpenSSL elsewhere (shipped in
-        # rbeolibs). The ffmpeg port treats these as mutually exclusive, so
-        # enable exactly one per platform. The engine must link the backing
-        # system lib on Apple: -framework Security -framework CoreFoundation.
+        # TLS backend for the https/tls protocols.
+        # Apple: SecureTransport (Security.framework, no cerbero dep). The meson
+        # port does NOT auto-add -framework Security to libavformat's link line,
+        # so inject it via LDFLAGS.
+        # Android/Linux: The meson port commit a66a916f has a logic bug in its
+        # is_blocked_by_license check (uses `not version3.disabled()` instead of
+        # `not version3.enabled()`), so passing -Dversion3=enabled with OpenSSL
+        # >= 3.0 still triggers the error "OpenSSL >=3.0.0 requires
+        # -Dversion3=enabled". Until the meson port is updated, we leave OpenSSL
+        # disabled on non-Apple (openssl is in deps for build-ordering only, not
+        # used by meson). Plain RTSP/TCP/UDP works; RTSPS (TLS) does not on
+        # Android/Linux until this is resolved. TODO: switch to gnutls once we
+        # add it to rbeolibs, or land the upstream meson port fix.
         if Platform.is_apple(self.config.target_platform):
             self.meson_options['securetransport'] = 'enabled'
-            # The ffmpeg Meson port detects SecureTransport but does NOT add
-            # -framework Security to the libavformat dylib link, so it fails with
-            # undefined _SSLCreateContext/_SecTrustEvaluate/... Add it here.
-            # (CoreFoundation is already linked via VideoToolbox.) Use the
-            # -Wl,-framework,Security form so it survives as a single token.
             self.append_env('LDFLAGS', '-Wl,-framework,Security')
-        else:
-            self.meson_options['openssl'] = 'enabled'
 
         # Simulator doesn't like shared libs
         if Subsystem.is_apple_simulator(self.config.target_subsystem):
