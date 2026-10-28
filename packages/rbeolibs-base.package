@@ -31,11 +31,13 @@ class Package(package.Package):
              # ffmpeg/libav: the C++ engine links libav* directly (decode-only,
              # LGPL, OS hardware decode compiled in). Not gst-libav, not a
              # GStreamer pipeline -- just the libraries. See recipes/ffmpeg.recipe.
-             'ffmpeg:libs']
+             'ffmpeg:libs',
+             # libavformat needs -lbz2: ship it so the app need not vendor its own bzip2.
+             'bzip2:libs']
 
     files_devel = ['libnice:plugins_net_devel','libevent','zlib',
                    'gstreamer-1.0', 'gst-plugins-base-1.0', 'gst-plugins-bad-1.0',
-                   'ffmpeg']
+                   'ffmpeg', 'bzip2']
 
     def prepare(self):
         # proxy-libintl is glib's gettext shim for platforms whose libc lacks
